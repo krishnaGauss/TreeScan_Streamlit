@@ -149,19 +149,21 @@ def process_pdf_zip(
     in_zip = zipfile.ZipFile(io.BytesIO(zip_bytes))
 
     all_pdf_names = [n for n in in_zip.namelist() if not n.endswith("/")]
-    all_pdf_stems = {Path(n).stem for n in all_pdf_names}
+    # Strip whitespace from PDF stems 
+    all_pdf_stems = {Path(n).stem.strip() for n in all_pdf_names}
     xlsx_s_nos    = set(rows.keys())
 
-    pdf_not_in_xlsx = sorted(all_pdf_stems - xlsx_s_nos, key=lambda x: (not x.isdigit(), int(x) if x.isdigit() else x))
-    xlsx_not_in_pdf = sorted(xlsx_s_nos - all_pdf_stems, key=lambda x: (not x.isdigit(), int(x) if x.isdigit() else x))
+    _sort_key = lambda x: (not x.isdigit(), int(x) if x.isdigit() else x)
+    pdf_not_in_xlsx = sorted(all_pdf_stems - xlsx_s_nos, key=_sort_key)
+    xlsx_not_in_pdf = sorted(xlsx_s_nos - all_pdf_stems, key=_sort_key)
 
-    matched = [n for n in sorted(all_pdf_names) if Path(n).stem in rows]
+    matched = [n for n in sorted(all_pdf_names) if Path(n).stem.strip() in rows]
     total   = len(matched)
     out_buf = io.BytesIO()
 
     with zipfile.ZipFile(out_buf, "w", zipfile.ZIP_DEFLATED) as out_zip:
         for i, name in enumerate(matched):
-            s_no = Path(name).stem
+            s_no = Path(name).stem.strip()          # clean key → looks up row correctly
             out_zip.writestr(f"{s_no}.pdf", build_tree_pdf(in_zip.read(name), rows[s_no]))
             if on_progress:
                 on_progress(i + 1, total)
