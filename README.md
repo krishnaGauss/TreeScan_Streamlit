@@ -10,13 +10,13 @@ Live app: [treescan.streamlit.app](https://treescan.streamlit.app)
 
 The app has two modes:
 
-**QR Generation** -- Upload a CSV and provide a base URL. The app generates a branded QR code image for each tree row, encoding a URL of the form `<base_url>/<S_No_>.pdf`. All images are packaged into a downloadable ZIP.
+**QR Generation** -- Upload an XLSX or CSV and provide a base URL. The app generates a branded QR code image for each tree row, encoding a URL of the form `<base_url>/<S_No_>.pdf`. All images are packaged into a downloadable ZIP.
 
-**PDF Generation** -- Upload a CSV and a ZIP of per-tree PDFs. The app prepends a header, a data table (populated from the CSV row), and appends a footer to each PDF. The results are packaged into a downloadable ZIP.
+**PDF Generation** -- Upload an XLSX or CSV and a ZIP of per-tree PDFs. The app prepends a header, a data table (populated from the XLSX/CSV row), and appends a footer to each PDF. The results are packaged into a downloadable ZIP.
 
-### CSV format
+### XLSX / CSV format
 
-The CSV must include the following columns:
+The XLSX or CSV must include the following columns:
 
 | Column | Description |
 |---|---|
@@ -65,3 +65,17 @@ streamlit run main.py
 ```
 
 The app will open in your browser at `http://localhost:8501`.
+
+---
+
+## Using these PDFs with QR
+
+Each QR code encodes a URL of the form `<Base URL>/<S_No_>.pdf` — for example `https://example.com/4.pdf`. For the QR codes to resolve correctly, the generated PDFs must be publicly accessible at those URLs.
+
+To do this:
+
+1. Run **PDF Generation** to produce the output ZIP and extract the PDFs.
+2. Place all the PDF files into the **`public/`** folder of your website repository (or whichever directory your hosting provider serves as the static root).
+3. Commit and push the changes, then redeploy your site.
+
+Once the deployment is live, scanning any QR code will open the corresponding tree's PDF directly in the browser.
