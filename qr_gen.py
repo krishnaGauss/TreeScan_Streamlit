@@ -1,7 +1,9 @@
 import csv
 import io
 import zipfile
+from functools import lru_cache
 
+import openpyxl
 import segno
 from PIL import Image, ImageDraw
 
@@ -12,6 +14,11 @@ from constants import (
     SERIF_FONT, DEVA_FONT,
 )
 from drawing import fit_and_draw, has_devanagari, english_from_vernacular
+
+
+@lru_cache(maxsize=1)
+def _template() -> Image.Image:
+    return Image.open(TEMPLATE_PATH).convert("RGB")
 
 
 def make_qr_card(url: str, tree_name: str = "", tree_number: str = "") -> Image.Image:
@@ -26,7 +33,7 @@ def make_qr_card(url: str, tree_name: str = "", tree_number: str = "") -> Image.
     pad     = int(min(box_w, box_h) * 0.10)
     qr_size = min(box_w - 2 * pad, box_h - 2 * pad)
 
-    canvas = Image.open(TEMPLATE_PATH).convert("RGB")
+    canvas = _template().copy()
     canvas.paste(
         qr_img.resize((qr_size, qr_size), Image.LANCZOS),
         (QR_BOX_X1 + (box_w - qr_size) // 2, QR_BOX_Y1 + (box_h - qr_size) // 2),
@@ -66,15 +73,28 @@ def _img_to_bytes(img: Image.Image, fmt: str) -> bytes:
     return buf.read()
 
 
-def process_csv(csv_bytes: bytes, base_url: str, fmt: str) -> bytes:
+def _read_rows(file_bytes: bytes, filename: str) -> list[dict]:
+    if filename.lower().endswith(".xlsx"):
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+        ws = wb.active
+        headers = [cell.value for cell in next(ws.iter_rows(min_row=1, max_row=1))]
+        rows = [
+            {headers[i]: (str(cell.value) if cell.value is not None else "")
+             for i, cell in enumerate(row)}
+            for row in ws.iter_rows(min_row=2)
+        ]
+        wb.close()
+        return rows
+    return list(csv.DictReader(io.StringIO(file_bytes.decode("utf-8-sig"))))
+
+
+def process_csv(csv_bytes: bytes, base_url: str, fmt: str, filename: str = "data.csv") -> bytes:
     ext      = "jpg" if fmt == "JPEG" else "png"
     base_url = base_url.rstrip("/")
     out_buf  = io.BytesIO()
 
-    reader = csv.DictReader(io.StringIO(csv_bytes.decode("utf-8-sig")))
-
     with zipfile.ZipFile(out_buf, "w", zipfile.ZIP_DEFLATED) as zout:
-        for row in reader:
+        for row in _read_rows(csv_bytes, filename):
             s_no      = row["S_No_"].strip()
             tree_name = english_from_vernacular(row["Vernacular"].strip())
             url       = f"{base_url}/{s_no}.pdf"

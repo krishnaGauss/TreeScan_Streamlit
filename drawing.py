@@ -1,4 +1,5 @@
 import re
+from functools import lru_cache
 from pathlib import Path
 
 from PIL import ImageDraw, ImageFont
@@ -6,6 +7,7 @@ from PIL import ImageDraw, ImageFont
 from constants import SERIF_FONT
 
 
+@lru_cache(maxsize=32)
 def get_font(size: int, path: Path = SERIF_FONT) -> ImageFont.FreeTypeFont:
     return ImageFont.truetype(str(path), size)
 

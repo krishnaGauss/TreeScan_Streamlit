@@ -1,7 +1,10 @@
 import csv
 import io
 import zipfile
+from functools import lru_cache
 from pathlib import Path
+
+import openpyxl
 
 import fitz
 from PIL import Image, ImageDraw
@@ -13,12 +16,14 @@ from constants import (
 from drawing import get_font, measure, wrap_text_mixed, draw_mixed_line, line_script_metrics
 
 
+@lru_cache(maxsize=4)
 def _load_header(width: int) -> Image.Image:
     img = Image.open(HEADER_PATH).convert("RGB")
     aspect = img.height / img.width
     return img.resize((width, int(width * aspect)), Image.LANCZOS)
 
 
+@lru_cache(maxsize=4)
 def _load_footer(width: int) -> Image.Image:
     img = Image.open(FOOTER_PATH).convert("RGB")
     img = img.crop((0, 155, img.width, img.height))
@@ -64,10 +69,9 @@ def _render_table(row: dict, width: int) -> Image.Image:
 
         # Use per-line metrics so Latin-only rows (S_No_, Latitude, Longitude)
         # are centered by their actual font, not the taller Devanagari ascent
-        total_val_h = sum(sum(line_script_metrics(l, deva_font, latin_font)) for l in val_lines)
-        tv = y + (rh - total_val_h) // 2
-        for line in val_lines:
-            asc, desc = line_script_metrics(line, deva_font, latin_font)
+        per_line = [line_script_metrics(l, deva_font, latin_font) for l in val_lines]
+        tv = y + (rh - sum(a + d for a, d in per_line)) // 2
+        for line, (asc, desc) in zip(val_lines, per_line):
             draw_mixed_line(draw, line, LABEL_W + PAD, tv + asc, deva_font, latin_font, "#1a1a1a")
             tv += asc + desc
 
@@ -123,9 +127,23 @@ def build_tree_pdf(pdf_bytes: bytes, row: dict) -> bytes:
     return buf.read()
 
 
-def process_pdf_zip(zip_bytes: bytes, csv_bytes: bytes) -> bytes:
-    reader = csv.DictReader(io.StringIO(csv_bytes.decode("utf-8-sig")))
-    rows   = {r["S_No_"].strip(): r for r in reader}
+def _read_rows(file_bytes: bytes, filename: str) -> list[dict]:
+    if filename.lower().endswith(".xlsx"):
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+        ws = wb.active
+        headers = [cell.value for cell in next(ws.iter_rows(min_row=1, max_row=1))]
+        rows = [
+            {headers[i]: (str(cell.value) if cell.value is not None else "")
+             for i, cell in enumerate(row)}
+            for row in ws.iter_rows(min_row=2)
+        ]
+        wb.close()
+        return rows
+    return list(csv.DictReader(io.StringIO(file_bytes.decode("utf-8-sig"))))
+
+
+def process_pdf_zip(zip_bytes: bytes, csv_bytes: bytes, filename: str = "data.csv") -> bytes:
+    rows = {r["S_No_"].strip(): r for r in _read_rows(csv_bytes, filename)}
 
     in_zip  = zipfile.ZipFile(io.BytesIO(zip_bytes))
     out_buf = io.BytesIO()

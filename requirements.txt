@@ -3,3 +3,4 @@ Pillow
 streamlit
 segno
 PyMuPDF
+openpyxl

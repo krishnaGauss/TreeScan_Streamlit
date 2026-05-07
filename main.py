@@ -11,15 +11,25 @@ mode = st.radio("Mode", ["QR Generation", "PDF Generation"], horizontal=True)
 with st.form("main_form"):
     if mode == "QR Generation":
         base_url = st.text_input("Base URL *", placeholder="https://example.com/docs")
-        upload   = st.file_uploader("CSV file *", type=["csv"])
-        st.caption("Tree number and name are read automatically from `S_No_` and `Vernacular` columns.")
+        upload   = st.file_uploader("CSV or XLSX file *", type=["csv", "xlsx"])
+        st.caption(
+            "Required columns: **S\\_No\\_** (tree number) and **Vernacular** (tree name).  \n"
+            "Example rows:\n\n"
+            "| S\\_No\\_ | Vernacular |\n"
+            "|---------|------------|\n"
+            "| 1 | Mangifera indica |\n"
+            "| 2 | Ficus benghalensis |\n\n"
+            "Each QR code will encode `<Base URL>/<S_No_>.pdf` — e.g. `https://example.com/1.pdf`."
+        )
         fmt    = st.radio("Output format", ["PNG", "JPG"], horizontal=True)
         csv_up = None
         zip_up = None
     else:
-        csv_up   = st.file_uploader("CSV file *", type=["csv"])
+        csv_up   = st.file_uploader("CSV or XLSX file *", type=["csv", "xlsx"])
         zip_up   = st.file_uploader("PDF ZIP *", type=["zip"])
-        st.caption("Each PDF in the ZIP must be named `<S_No_>.pdf` to match CSV rows.")
+        st.caption(
+            "Each PDF in the ZIP must be named `<S_No_>.pdf` — e.g. `1.pdf`, `2.pdf`."
+        )
         base_url = ""
         fmt      = "PNG"
         upload   = None
@@ -46,7 +56,7 @@ if go:
         with st.spinner("Generating..."):
             if mode == "QR Generation":
                 save_fmt = "JPEG" if fmt == "JPG" else "PNG"
-                result   = process_csv(upload.read(), base_url.strip(), save_fmt)
+                result   = process_csv(upload.read(), base_url.strip(), save_fmt, upload.name)
                 st.success("Done!")
                 st.download_button(
                     "Download QR Codes ZIP",
@@ -56,7 +66,7 @@ if go:
                     use_container_width=True,
                 )
             else:
-                result = process_pdf_zip(zip_up.read(), csv_up.read())
+                result = process_pdf_zip(zip_up.read(), csv_up.read(), csv_up.name)
                 st.success("Done!")
                 st.download_button(
                     "Download Modified PDFs ZIP",
