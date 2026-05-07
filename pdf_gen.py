@@ -142,20 +142,29 @@ def _read_rows(file_bytes: bytes, filename: str) -> list[dict]:
     return list(csv.DictReader(io.StringIO(file_bytes.decode("utf-8-sig"))))
 
 
-def process_pdf_zip(zip_bytes: bytes, csv_bytes: bytes, filename: str = "data.csv") -> bytes:
-    rows = {r["S_No_"].strip(): r for r in _read_rows(csv_bytes, filename)}
+def process_pdf_zip(
+    zip_bytes: bytes, csv_bytes: bytes, filename: str = "data.csv", on_progress=None
+) -> tuple[bytes, list[str], list[str]]:
+    rows   = {r["S_No_"].strip(): r for r in _read_rows(csv_bytes, filename)}
+    in_zip = zipfile.ZipFile(io.BytesIO(zip_bytes))
 
-    in_zip  = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    all_pdf_names = [n for n in in_zip.namelist() if not n.endswith("/")]
+    all_pdf_stems = {Path(n).stem for n in all_pdf_names}
+    xlsx_s_nos    = set(rows.keys())
+
+    pdf_not_in_xlsx = sorted(all_pdf_stems - xlsx_s_nos, key=lambda x: (not x.isdigit(), int(x) if x.isdigit() else x))
+    xlsx_not_in_pdf = sorted(xlsx_s_nos - all_pdf_stems, key=lambda x: (not x.isdigit(), int(x) if x.isdigit() else x))
+
+    matched = [n for n in sorted(all_pdf_names) if Path(n).stem in rows]
+    total   = len(matched)
     out_buf = io.BytesIO()
 
     with zipfile.ZipFile(out_buf, "w", zipfile.ZIP_DEFLATED) as out_zip:
-        for name in sorted(in_zip.namelist()):
-            if name.endswith("/"):
-                continue
+        for i, name in enumerate(matched):
             s_no = Path(name).stem
-            if s_no not in rows:
-                continue
             out_zip.writestr(f"{s_no}.pdf", build_tree_pdf(in_zip.read(name), rows[s_no]))
+            if on_progress:
+                on_progress(i + 1, total)
 
     out_buf.seek(0)
-    return out_buf.read()
+    return out_buf.read(), pdf_not_in_xlsx, xlsx_not_in_pdf

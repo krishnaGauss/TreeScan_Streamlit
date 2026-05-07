@@ -88,18 +88,31 @@ def _read_rows(file_bytes: bytes, filename: str) -> list[dict]:
     return list(csv.DictReader(io.StringIO(file_bytes.decode("utf-8-sig"))))
 
 
-def process_csv(csv_bytes: bytes, base_url: str, fmt: str, filename: str = "data.csv") -> bytes:
+def process_csv(
+    csv_bytes: bytes, base_url: str, fmt: str, filename: str = "data.csv", on_progress=None
+) -> tuple[bytes, list[str]]:
     ext      = "jpg" if fmt == "JPEG" else "png"
     base_url = base_url.rstrip("/")
+    rows     = _read_rows(csv_bytes, filename)
+    total    = len(rows)
     out_buf  = io.BytesIO()
+    failed: list[str] = []
 
     with zipfile.ZipFile(out_buf, "w", zipfile.ZIP_DEFLATED) as zout:
-        for row in _read_rows(csv_bytes, filename):
-            s_no      = row["S_No_"].strip()
-            tree_name = english_from_vernacular(row["Vernacular"].strip())
-            url       = f"{base_url}/{s_no}.pdf"
-            img       = make_qr_card(url, tree_name, s_no)
-            zout.writestr(f"{s_no}.{ext}", _img_to_bytes(img, fmt))
+        for i, row in enumerate(rows):
+            s_no = row.get("S_No_", "").strip()
+            if not s_no:
+                failed.append(f"(row {i + 2})")
+            else:
+                try:
+                    tree_name = english_from_vernacular(row.get("Vernacular", "").strip())
+                    url       = f"{base_url}/{s_no}.pdf"
+                    img       = make_qr_card(url, tree_name, s_no)
+                    zout.writestr(f"{s_no}.{ext}", _img_to_bytes(img, fmt))
+                except Exception:
+                    failed.append(s_no)
+            if on_progress:
+                on_progress(i + 1, total)
 
     out_buf.seek(0)
-    return out_buf.read()
+    return out_buf.read(), failed
