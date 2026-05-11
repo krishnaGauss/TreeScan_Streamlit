@@ -99,30 +99,15 @@ if go:
                 bar.empty()
                 n_failed  = len(failed_no_sno) + len(failed_empty_vern) + len(failed_other)
                 n_success = qr_total[0] - n_failed
-                st.success(f"Successfully generated {n_success} QR code{'s' if n_success != 1 else ''}!")
-                st.download_button(
-                    "Download QR Codes ZIP",
-                    data=result,
-                    file_name="qr_codes.zip",
-                    mime="application/zip",
-                    use_container_width=True,
-                )
-                expander_label = (
-                    f"Summary — {n_failed} record(s) could not be processed"
-                    if n_failed else "Summary — All records processed successfully"
-                )
-                with st.expander(expander_label):
-                    if not n_failed:
-                        st.write("All records were processed successfully.")
-                    if failed_empty_vern:
-                        st.markdown("**QR not generated because of empty Vernacular column:**")
-                        st.markdown("\n".join(f"- {s}" for s in failed_empty_vern))
-                    if failed_no_sno:
-                        st.markdown("**QR not generated because of missing S\\_No\\_:**")
-                        st.markdown("\n".join(f"- {s}" for s in failed_no_sno))
-                    if failed_other:
-                        st.markdown("**QR not generated because of unexpected error:**")
-                        st.markdown("\n".join(f"- {s}" for s in failed_other))
+                st.session_state["result"] = {
+                    "type": "qr",
+                    "data": result,
+                    "n_success": n_success,
+                    "n_failed": n_failed,
+                    "failed_no_sno": failed_no_sno,
+                    "failed_empty_vern": failed_empty_vern,
+                    "failed_other": failed_other,
+                }
             else:
                 pdf_total = [0]
 
@@ -132,31 +117,71 @@ if go:
 
                 result, pdf_not_in_xlsx, xlsx_not_in_pdf = process_pdf_zip(zip_up.getvalue(), csv_up.getvalue(), csv_up.name, on_progress=on_pdf_progress)
                 bar.empty()
-                n_pdfs = pdf_total[0]
-                st.success(f"Successfully generated {n_pdfs} PDF{'s' if n_pdfs != 1 else ''}!")
-                st.download_button(
-                    "Download Modified PDFs ZIP",
-                    data=result,
-                    file_name="tree_pdfs.zip",
-                    mime="application/zip",
-                    use_container_width=True,
-                )
-                n_pdf_only  = len(pdf_not_in_xlsx)
-                n_xlsx_only = len(xlsx_not_in_pdf)
-                if n_pdf_only > 0 and n_xlsx_only > 0:
-                    with st.expander(f"Summary — {n_pdf_only} PDF(s) unmatched, {n_xlsx_only} record(s) unmatched"):
-                        st.markdown("**PDFs with no matching record in XLSX:**")
-                        st.markdown("\n".join(f"- {name}.pdf" for name in pdf_not_in_xlsx))
-                        st.markdown("**XLSX records with no matching PDF:**")
-                        st.markdown("\n".join(f"- {s}" for s in xlsx_not_in_pdf))
-                elif n_pdf_only > 0:
-                    with st.expander(f"Summary — {n_pdf_only} PDF(s) had no matching record"):
-                        st.markdown("The following PDFs had **no matching record** in the XLSX:")
-                        st.markdown("\n".join(f"- {name}.pdf" for name in pdf_not_in_xlsx))
-                elif n_xlsx_only > 0:
-                    with st.expander(f"Summary — {n_xlsx_only} record(s) had no matching PDF"):
-                        st.markdown("The following **S\\_No\\_** records had no matching PDF in the ZIP:")
-                        st.markdown("\n".join(f"- {s}" for s in xlsx_not_in_pdf))
-                else:
-                    with st.expander("Summary — All records matched"):
-                        st.write("All PDFs and records were matched successfully.")
+                st.session_state["result"] = {
+                    "type": "pdf",
+                    "data": result,
+                    "n_pdfs": pdf_total[0],
+                    "pdf_not_in_xlsx": pdf_not_in_xlsx,
+                    "xlsx_not_in_pdf": xlsx_not_in_pdf,
+                }
+
+res = st.session_state.get("result")
+if res and res["type"] == "qr" and mode == "QR Generation":
+    n_success = res["n_success"]
+    n_failed  = res["n_failed"]
+    st.success(f"Successfully generated {n_success} QR code{'s' if n_success != 1 else ''}!")
+    if st.download_button(
+        "Download QR Codes ZIP",
+        data=res["data"],
+        file_name="qr_codes.zip",
+        mime="application/zip",
+        use_container_width=True,
+    ):
+        st.toast("Your download will start shortly!")
+    expander_label = (
+        f"Summary — {n_failed} record(s) could not be processed"
+        if n_failed else "Summary — All records processed successfully"
+    )
+    with st.expander(expander_label):
+        if not n_failed:
+            st.write("All records were processed successfully.")
+        if res["failed_empty_vern"]:
+            st.markdown("**QR not generated because of empty Vernacular column:**")
+            st.markdown("\n".join(f"- {s}" for s in res["failed_empty_vern"]))
+        if res["failed_no_sno"]:
+            st.markdown("**QR not generated because of missing S\\_No\\_:**")
+            st.markdown("\n".join(f"- {s}" for s in res["failed_no_sno"]))
+        if res["failed_other"]:
+            st.markdown("**QR not generated because of unexpected error:**")
+            st.markdown("\n".join(f"- {s}" for s in res["failed_other"]))
+
+elif res and res["type"] == "pdf" and mode == "PDF Generation":
+    n_pdfs      = res["n_pdfs"]
+    n_pdf_only  = len(res["pdf_not_in_xlsx"])
+    n_xlsx_only = len(res["xlsx_not_in_pdf"])
+    st.success(f"Successfully generated {n_pdfs} PDF{'s' if n_pdfs != 1 else ''}!")
+    if st.download_button(
+        "Download Modified PDFs ZIP",
+        data=res["data"],
+        file_name="tree_pdfs.zip",
+        mime="application/zip",
+        use_container_width=True,
+    ):
+        st.toast("Your download will start shortly!")
+    if n_pdf_only > 0 and n_xlsx_only > 0:
+        with st.expander(f"Summary — {n_pdf_only} PDF(s) unmatched, {n_xlsx_only} record(s) unmatched"):
+            st.markdown("**PDFs with no matching record in XLSX:**")
+            st.markdown("\n".join(f"- {name}.pdf" for name in res["pdf_not_in_xlsx"]))
+            st.markdown("**XLSX records with no matching PDF:**")
+            st.markdown("\n".join(f"- {s}" for s in res["xlsx_not_in_pdf"]))
+    elif n_pdf_only > 0:
+        with st.expander(f"Summary — {n_pdf_only} PDF(s) had no matching record"):
+            st.markdown("The following PDFs had **no matching record** in the XLSX:")
+            st.markdown("\n".join(f"- {name}.pdf" for name in res["pdf_not_in_xlsx"]))
+    elif n_xlsx_only > 0:
+        with st.expander(f"Summary — {n_xlsx_only} record(s) had no matching PDF"):
+            st.markdown("The following **S\\_No\\_** records had no matching PDF in the ZIP:")
+            st.markdown("\n".join(f"- {s}" for s in res["xlsx_not_in_pdf"]))
+    else:
+        with st.expander("Summary — All records matched"):
+            st.write("All PDFs and records were matched successfully.")
