@@ -4,6 +4,7 @@ import zipfile
 
 import openpyxl
 import streamlit as st
+import streamlit.components.v1 as components
 
 from qr_gen import process_csv
 from pdf_gen import process_pdf_zip
@@ -22,6 +23,70 @@ def _count_records(file) -> int:
 def _count_zip_files(file) -> int:
     with zipfile.ZipFile(io.BytesIO(file.getvalue())) as zf:
         return sum(1 for n in zf.namelist() if not n.endswith("/"))
+
+
+def _download_overlay():
+    components.html("""
+    <script>
+    (function () {
+        const pdoc = window.parent.document;
+
+        if (!pdoc.getElementById('dl-overlay-style')) {
+            const s = pdoc.createElement('style');
+            s.id = 'dl-overlay-style';
+            s.textContent = `
+                #dl-overlay {
+                    display: none;
+                    position: fixed;
+                    inset: 0;
+                    background: rgba(255,255,255,0.93);
+                    z-index: 2147483647;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                }
+                #dl-overlay.active { display: flex; }
+                .dl-ring {
+                    width: 52px; height: 52px;
+                    border: 5px solid #ddd;
+                    border-top-color: #0068c9;
+                    border-radius: 50%;
+                    animation: dlspin .75s linear infinite;
+                }
+                @keyframes dlspin { to { transform: rotate(360deg); } }
+                .dl-msg {
+                    margin-top: 18px;
+                    font: 500 15px/1 sans-serif;
+                    color: #444;
+                }
+            `;
+            pdoc.head.appendChild(s);
+        }
+
+        let ov = pdoc.getElementById('dl-overlay');
+        if (!ov) {
+            ov = pdoc.createElement('div');
+            ov.id = 'dl-overlay';
+            ov.innerHTML = '<div class="dl-ring"></div><div class="dl-msg">Your download will start shortly…</div>';
+            pdoc.body.appendChild(ov);
+        }
+
+        // Hide on every rerender — this script re-runs whenever Streamlit reruns
+        ov.classList.remove('active');
+
+        function watch() {
+            pdoc.querySelectorAll('[data-testid="stDownloadButton"] button:not([data-dlw])').forEach(btn => {
+                btn.setAttribute('data-dlw', '1');
+                btn.addEventListener('click', function () {
+                    if (!this.disabled) ov.classList.add('active');
+                });
+            });
+        }
+        watch();
+        new MutationObserver(watch).observe(pdoc.body, { childList: true, subtree: true });
+    })();
+    </script>
+    """, height=0)
 
 
 st.set_page_config(page_title="Tree QR & PDF Generator", page_icon="🌿", layout="centered")
@@ -126,6 +191,9 @@ if go:
                 }
 
 res = st.session_state.get("result")
+if res:
+    _download_overlay()
+
 if res and res["type"] == "qr" and mode == "QR Generation":
     n_success = res["n_success"]
     n_failed  = res["n_failed"]
