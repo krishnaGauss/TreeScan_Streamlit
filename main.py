@@ -244,7 +244,7 @@ elif res and res["type"] == "pdf" and mode == "PDF Generation":
         mime="application/zip",
         use_container_width=True,
     ):
-        st.toast("Your download will start shortly!")
+        st.toast("Download started!")
     if n_pdf_only > 0 and n_xlsx_only > 0:
         with st.expander(f"Summary — {n_pdf_only} PDF(s) unmatched, {n_xlsx_only} record(s) unmatched"):
             st.markdown("**PDFs with no matching record in XLSX:**")
