@@ -4,10 +4,83 @@ import zipfile
 
 import openpyxl
 import streamlit as st
-import streamlit.components.v1 as components
+import streamlit.components.v2 as components_v2
 
 from qr_gen import process_csv
 from pdf_gen import process_pdf_zip
+
+_overlay_renderer = components_v2.component(
+    "download_overlay",
+    css="""
+        #dl-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.93);
+            z-index: 2147483647;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        #dl-overlay.active { display: flex; }
+        .dl-ring {
+            width: 52px;
+            height: 52px;
+            border: 5px solid #ddd;
+            border-top-color: #0068c9;
+            border-radius: 50%;
+            animation: dlspin 0.75s linear infinite;
+        }
+        @keyframes dlspin { to { transform: rotate(360deg); } }
+        .dl-msg {
+            margin-top: 18px;
+            font: 500 15px/1 sans-serif;
+            color: #444;
+        }
+    """,
+    js="""
+        export default function ({ el, data }) {
+            if (!document.getElementById('dl-overlay')) {
+                const ov = document.createElement('div');
+                ov.id = 'dl-overlay';
+                ov.innerHTML = '<div class="dl-ring"></div><div class="dl-msg">Your download will start shortly…</div>';
+                document.body.appendChild(ov);
+            }
+
+            clearTimeout(document._dlTimeout);
+            const ov = document.getElementById('dl-overlay');
+            if (ov) ov.classList.remove('active');
+
+            if (document._dlHandler) document.removeEventListener('click', document._dlHandler, true);
+            document._dlHandler = function (e) {
+                const btn = e.target.closest('[data-testid="stDownloadButton"] button');
+                if (btn && !btn.disabled) {
+                    const overlay = document.getElementById('dl-overlay');
+                    if (overlay) {
+                        overlay.classList.add('active');
+                        document._dlTimeout = setTimeout(function () {
+                            overlay.classList.remove('active');
+                        }, 5000);
+                    }
+                }
+            };
+            document.addEventListener('click', document._dlHandler, true);
+
+            return function cleanup() {
+                if (document._dlHandler) {
+                    document.removeEventListener('click', document._dlHandler, true);
+                    document._dlHandler = null;
+                }
+                clearTimeout(document._dlTimeout);
+            };
+        }
+    """,
+    isolate_styles=False,
+)
+
+
+def _download_overlay():
+    _overlay_renderer()
 
 
 def _count_records(file) -> int:
@@ -23,70 +96,6 @@ def _count_records(file) -> int:
 def _count_zip_files(file) -> int:
     with zipfile.ZipFile(io.BytesIO(file.getvalue())) as zf:
         return sum(1 for n in zf.namelist() if not n.endswith("/"))
-
-
-def _download_overlay():
-    components.html("""
-    <script>
-    (function () {
-        const pdoc = window.parent.document;
-
-        if (!pdoc.getElementById('dl-overlay-style')) {
-            const s = pdoc.createElement('style');
-            s.id = 'dl-overlay-style';
-            s.textContent = `
-                #dl-overlay {
-                    display: none;
-                    position: fixed;
-                    inset: 0;
-                    background: rgba(255,255,255,0.93);
-                    z-index: 2147483647;
-                    flex-direction: column;
-                    align-items: center;
-                    justify-content: center;
-                }
-                #dl-overlay.active { display: flex; }
-                .dl-ring {
-                    width: 52px; height: 52px;
-                    border: 5px solid #ddd;
-                    border-top-color: #0068c9;
-                    border-radius: 50%;
-                    animation: dlspin .75s linear infinite;
-                }
-                @keyframes dlspin { to { transform: rotate(360deg); } }
-                .dl-msg {
-                    margin-top: 18px;
-                    font: 500 15px/1 sans-serif;
-                    color: #444;
-                }
-            `;
-            pdoc.head.appendChild(s);
-        }
-
-        let ov = pdoc.getElementById('dl-overlay');
-        if (!ov) {
-            ov = pdoc.createElement('div');
-            ov.id = 'dl-overlay';
-            ov.innerHTML = '<div class="dl-ring"></div><div class="dl-msg">Your download will start shortly…</div>';
-            pdoc.body.appendChild(ov);
-        }
-
-        // Hide on every rerender — this script re-runs whenever Streamlit reruns
-        ov.classList.remove('active');
-
-        function watch() {
-            pdoc.querySelectorAll('[data-testid="stDownloadButton"] button:not([data-dlw])').forEach(btn => {
-                btn.setAttribute('data-dlw', '1');
-                btn.addEventListener('click', function () {
-                    if (!this.disabled) ov.classList.add('active');
-                });
-            });
-        }
-        watch();
-        new MutationObserver(watch).observe(pdoc.body, { childList: true, subtree: true });
-    })();
-    </script>
-    """, height=0)
 
 
 st.set_page_config(page_title="Tree QR & PDF Generator", page_icon="🌿", layout="centered")
@@ -205,7 +214,7 @@ if res and res["type"] == "qr" and mode == "QR Generation":
         mime="application/zip",
         use_container_width=True,
     ):
-        st.toast("Your download will start shortly!")
+        st.toast("Download started!")
     expander_label = (
         f"Summary — {n_failed} record(s) could not be processed"
         if n_failed else "Summary — All records processed successfully"
